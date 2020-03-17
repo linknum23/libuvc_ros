@@ -29,16 +29,16 @@ link_directories(${catkin_LINK_DIRS})
 find_package(Boost REQUIRED COMPONENTS thread)
 include_directories(${Boost_INCLUDE_DIRS})
 
-add_executable(camera_node src/main.cpp src/camera_driver.cpp)
-target_link_libraries(camera_node ${libuvc_LIBRARIES} ${Boost_LIBRARIES} ${catkin_LIBRARIES})
-add_dependencies(camera_node ${PROJECT_NAME}_gencfg)
+add_executable(libuvc_camera_node src/main.cpp src/camera_driver.cpp)
+target_link_libraries(libuvc_camera_node ${libuvc_LIBRARIES} ${Boost_LIBRARIES} ${catkin_LIBRARIES})
+add_dependencies(libuvc_camera_node ${PROJECT_NAME}_gencfg)
 
 add_library(libuvc_camera_nodelet src/nodelet.cpp src/camera_driver.cpp)
 add_dependencies(libuvc_camera_nodelet ${libuvc_camera_EXPORTED_TARGETS})
 target_link_libraries(libuvc_camera_nodelet ${libuvc_LIBRARIES} ${Boost_LIBRARIES} ${catkin_LIBRARIES})
 add_dependencies(libuvc_camera_nodelet ${PROJECT_NAME}_gencfg)
 
-install(TARGETS camera_node libuvc_camera_nodelet
+install(TARGETS libuvc_camera_node libuvc_camera_nodelet
   ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
   LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
   RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
