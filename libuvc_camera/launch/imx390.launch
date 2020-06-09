@@ -1,0 +1,50 @@
+<?xml version="1.0"?>
+<launch>
+  <arg name="playback_enabled" default="false"          doc="if images are being played back from recording" />
+  <arg name="camera_ns"        default="camera"         doc="camera namespace" />
+  <arg name="frame_rate_hz"    default="30"             doc="frame rate" />
+  <arg name="mod_rate"         default="1"              doc="only publish every xth frame, workaround for autoexposure bug"/>
+  <arg name="debug_view"       default="false"          doc="launch an image viewer" />
+  <arg name="frame_id"         default="camera_optical" doc="tf frame id for camera" />
+  <arg name="camera_info_url"  default=""               doc="Camera info url ie. file:///full/path/to/local/camera_cal.yaml or package://camera_info_manager/tests/test_calibration.yaml, empty dedaults to ~/.ros/camera_info/CAMERA_SERIAL_NUM.yaml" />
+  <arg name="device_id"        default=""               doc="Camera id, likely it's serial number" />
+
+  <!-- 0V -->
+  <!--
+  <arg name="width"    default="1928"     doc="Image Width" />
+  <arg name="height"   default="1256"     doc="Image Height" />
+  -->
+  <!-- IMX390 -->
+  <arg name="width"    default="1936"     doc="Image Width" />
+  <arg name="height"   default="1100"     doc="Image Height" />
+  
+  <group ns="$(arg camera_ns)">
+    <!-- Manage all of the nodelets in the image pipeline -->
+    <arg name="manager" value="nodelet_manager" />
+    <node pkg="nodelet" type="nodelet" name="$(arg manager)" args="manager" output="screen"/>
+    <!-- Acquire images (if needed) -->
+    <node unless="$(arg playback_enabled)" pkg="nodelet" type="nodelet" name="driver" output="screen"
+	  args="load libuvc_camera/driver $(arg manager)">
+      <param name="frame_rate" value="$(arg frame_rate_hz)" />
+      <param name="width"      value="$(arg width)" />
+      <param name="height"     value="$(arg height)" />
+      <param name="vendor"     value="0x2a0b" />
+    </node>
+    <!-- Uncompress recorded topics (if needed) -->
+    <node if="$(arg playback_enabled)" pkg="image_transport" type="republish" name="decompressor" output="screen"
+          args="compressed in:=image_raw raw out:=image_raw" />
+    <!-- Debayer and publish monochrome and color topics -->
+    <node pkg="nodelet" type="nodelet" name="debayer"       args="load image_proc/debayer $(arg manager)"/>
+    <!-- Rectify monochrome images -->
+    <node pkg="nodelet" type="nodelet" name="rectify_mono"  args="load image_proc/rectify $(arg manager)"/>
+    <!-- Rectify color images -->
+    <node pkg="nodelet" type="nodelet" name="rectify_color" args="load image_proc/rectify $(arg manager)" >
+      <remap from="image_mono" to="image_color" />
+      <remap from="image_rect" to="image_rect_color" />
+    </node>
+  </group>
+  <node pkg="image_view" type="image_view" name="test_view" if="$(arg debug_view)">
+    <remap from="image" to="$(arg camera_ns)/image_rect_color"     unless="$(arg use_roi" />
+    <remap from="image" to="$(arg camera_ns)/roi/image_rect_color" if="$(arg use_roi" />
+  </node>
+</launch>

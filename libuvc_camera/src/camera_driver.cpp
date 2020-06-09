@@ -4,7 +4,7 @@
 *  Copyright (C) 2012 Ken Tossell
 *  All rights reserved.
 *
-*  Redistribution and use in source and binary forms, with or without
+*  Redistrion and use in source and binary forms, with or without
 *  modification, are permitted provided that the following conditions
 *  are met:
 *
@@ -162,6 +162,66 @@ void CameraDriver::ReconfigureCallback(UVCCameraConfig &new_config, uint32_t lev
   config_ = new_config;
 }
 
+
+// from guvcview
+#define CLIP(value) (uint8_t)(((value)>0xFF)?0xff:(((value)<0)?0:(value)))
+/* regular yuv (YUYV) to rgb24*/
+void
+yuyv2rgb (uint8_t *pyuv, uint8_t *prgb, int width, int height)
+{
+	int l=0;
+	int SizeYUV=height * width * 2; /* 2 bytes per pixel*/
+	for(l=0;l<SizeYUV;l=l+4)
+	{	/*iterate every 4 bytes*/
+		/* standart: r = y0 + 1.402 (v-128) */
+		/* logitech: r = y0 + 1.370705 (v-128) */
+		*prgb++=CLIP(pyuv[l] + 1.402 * (pyuv[l+3]-128));
+		/* standart: g = y0 - 0.34414 (u-128) - 0.71414 (v-128)*/
+		/* logitech: g = y0 - 0.337633 (u-128)- 0.698001 (v-128)*/
+		*prgb++=CLIP(pyuv[l] - 0.34414 * (pyuv[l+1]-128) -0.71414*(pyuv[l+3]-128));
+		/* standart: b = y0 + 1.772 (u-128) */
+		/* logitech: b = y0 + 1.732446 (u-128) */
+		*prgb++=CLIP(pyuv[l] + 1.772 *( pyuv[l+1]-128));
+		/* standart: r1 =y1 + 1.402 (v-128) */
+		/* logitech: r1 = y1 + 1.370705 (v-128) */
+		*prgb++=CLIP(pyuv[l+2] + 1.402 * (pyuv[l+3]-128));
+		/* standart: g1 = y1 - 0.34414 (u-128) - 0.71414 (v-128)*/
+		/* logitech: g1 = y1 - 0.337633 (u-128)- 0.698001 (v-128)*/
+		*prgb++=CLIP(pyuv[l+2] - 0.34414 * (pyuv[l+1]-128) -0.71414 * (pyuv[l+3]-128));
+		/* standart: b1 = y1 + 1.772 (u-128) */
+		/* logitech: b1 = y1 + 1.732446 (u-128) */
+		*prgb++=CLIP(pyuv[l+2] + 1.772*(pyuv[l+1]-128));
+	}
+}
+/* used for rgb video (fourcc="RGB ")           */
+/* lines are on correct order                   */
+void
+yuyv2bgr1 (uint8_t *pyuv, uint8_t *pbgr, int width, int height)
+{
+	int l=0;
+	int SizeYUV=height * width * 2; /* 2 bytes per pixel*/
+	for(l=0;l<SizeYUV;l=l+4)
+	{	/*iterate every 4 bytes*/
+		/* standart: b = y0 + 1.772 (u-128) */
+		/* logitech: b = y0 + 1.732446 (u-128) */
+		*pbgr++=CLIP(pyuv[l] + 1.772 *( pyuv[l+1]-128));
+		/* standart: g = y0 - 0.34414 (u-128) - 0.71414 (v-128)*/
+		/* logitech: g = y0 - 0.337633 (u-128)- 0.698001 (v-128)*/
+		*pbgr++=CLIP(pyuv[l] - 0.34414 * (pyuv[l+1]-128) -0.71414*(pyuv[l+3]-128));
+		/* standart: r = y0 + 1.402 (v-128) */
+		/* logitech: r = y0 + 1.370705 (v-128) */
+		*pbgr++=CLIP(pyuv[l] + 1.402 * (pyuv[l+3]-128));
+		/* standart: b1 = y1 + 1.772 (u-128) */
+		/* logitech: b1 = y1 + 1.732446 (u-128) */
+		*pbgr++=CLIP(pyuv[l+2] + 1.772*(pyuv[l+1]-128));
+		/* standart: g1 = y1 - 0.34414 (u-128) - 0.71414 (v-128)*/
+		/* logitech: g1 = y1 - 0.337633 (u-128)- 0.698001 (v-128)*/
+		*pbgr++=CLIP(pyuv[l+2] - 0.34414 * (pyuv[l+1]-128) -0.71414 * (pyuv[l+3]-128));
+		/* standart: r1 =y1 + 1.402 (v-128) */
+		/* logitech: r1 = y1 + 1.370705 (v-128) */
+		*pbgr++=CLIP(pyuv[l+2] + 1.402 * (pyuv[l+3]-128));
+	}
+}
 void CameraDriver::ImageCallback(uvc_frame_t *frame) {
   ros::Time timestamp = ros::Time(frame->capture_time.tv_sec, frame->capture_time.tv_usec * 1000);
   if ( timestamp == ros::Time(0) ) {
@@ -204,27 +264,35 @@ void CameraDriver::ImageCallback(uvc_frame_t *frame) {
     image->data.resize(image->step * image->height);
     memcpy(&(image->data[0]), frame->data, frame->data_bytes);
   } else if (frame->frame_format == UVC_FRAME_FORMAT_YUYV) {
+#define CONV_422_TO_RGB
+    //#define _422
+    //#define MONO16
+
     // TODO: leopard cameras that report yuyv are outputting 
     // FIXME: uvc_any2bgr does not work on "yuyv" format, so use uvc_yuyv2bgr directly.
-    //uvc_error_t conv_ret = uvc_yuyv2bgr(frame, rgb_frame_);
-    //if (conv_ret != UVC_SUCCESS) {
-    //  uvc_perror(conv_ret, "Couldn't convert frame to RGB");
-    //  return;
-    //}
-    //image->encoding = "bgr8";
-    //memcpy(&(image->data[0]), rgb_frame_->data, rgb_frame_->data_bytes);
-    // TEST1:
-    #if 0
-    image->encoding = "bayer_rggb8";
-    image->step = image->width * 4;
-    image->data.resize(image->step * image->height);
-    memcpy(&(image->data[0]), frame->data, frame->data_bytes);
-    #endif
+#ifdef CONV_422_TO_RGB
+#  if 0
+    uvc_error_t conv_ret = uvc_yuyv2rgb(frame, rgb_frame_);
+    if (conv_ret != UVC_SUCCESS) {
+      uvc_perror(conv_ret, "Couldn't convert frame to RGB");
+      return;
+    }
+#  else
+    yuyv2bgr1((uint8_t*)frame->data, (uint8_t*)rgb_frame_->data, image->width, image->height);
+#  endif
+    image->encoding = "rgb8";
+    memcpy(&(image->data[0]), rgb_frame_->data, rgb_frame_->data_bytes);
+#else
+#  ifdef MONO16
     // Works in greyscale mode, extremely dim
     image->encoding = "mono16";
-    image->step = image->width*2;
+#  else // _422
+    image->encoding = "yuv422";
+#  endif
+    image->step = image->width * 2;
     image->data.resize(image->step * image->height);
     memcpy(&(image->data[0]), frame->data, image->step * image->height);
+#endif
 #if libuvc_VERSION     > 00005 /* version > 0.0.5 */
   } else if (frame->frame_format == UVC_FRAME_FORMAT_MJPEG) {
     // Enable mjpeg support despite uvs_any2bgr shortcoming
